@@ -34,7 +34,8 @@ class RulesEngine:
         self._apply_default_comm = apply_default_comm or set_default_communications_output
         self._last_applied_device_id: Optional[str] = None
 
-    def _best_rule_for(self, devices: List[AudioDeviceInfo]) -> Optional[tuple]:
+# TIP: Aca modificar cuando tenga que hacer las reglas para las entradas añadiendo un parametro que sea Direction
+    def _best_rule_for(self, devices: List[AudioDeviceInfo], direction: Direction = Direction.OUTPUT) -> Optional[tuple]:
         """Devuelve (regla, dispositivo) de mayor prioridad (menor `priority`)
         entre los dispositivos de SALIDA activos que matchean alguna regla
         habilitada."""
@@ -43,7 +44,7 @@ class RulesEngine:
             if not rule.enabled:
                 continue
             for dev in devices:
-                if dev.direction != Direction.OUTPUT or dev.state != "Active":
+                if dev.direction != direction or dev.state != "Active":
                     continue
                 if rule.matches(dev.name):
                     candidates.append((rule, dev))

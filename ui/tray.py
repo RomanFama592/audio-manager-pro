@@ -8,6 +8,7 @@ Icono de bandeja del sistema con menú contextual:
     los dispositivos de salida activos)
   * Salir de la aplicación (apaga hilos/streams de forma prolija)
 """
+#TODO: añadir el selector de dispositivos de entrada
 from __future__ import annotations
 
 from typing import List
