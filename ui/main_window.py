@@ -53,7 +53,14 @@ class DevicesPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
-        layout.addWidget(SubtitleLabel("Dispositivos de audio"))
+        header_row = QHBoxLayout()
+        self.btn_refresh = PushButton(FIF.SYNC, "Actualizar ahora")
+
+        header_row.addWidget(SubtitleLabel("Dispositivos de audio"))  # 1. Izquierda
+        header_row.addStretch(1)                                     # 2. Empuja lo de la derecha
+        header_row.addWidget(self.btn_refresh)                       # 3. Derecha
+
+        layout.addLayout(header_row)
 
         columns = QHBoxLayout()
         # ---- Salidas ----
@@ -93,12 +100,6 @@ class DevicesPage(QWidget):
         columns.addWidget(in_card)
 
         layout.addLayout(columns)
-
-        refresh_row = QHBoxLayout()
-        self.btn_refresh = PushButton(FIF.SYNC, "Actualizar ahora")
-        refresh_row.addStretch(1)
-        refresh_row.addWidget(self.btn_refresh)
-        layout.addLayout(refresh_row)
         layout.addStretch(1)
 
         self.btn_refresh.clicked.connect(self.worker.refresh_now)
@@ -188,11 +189,12 @@ class RulesPage(QWidget):
         layout.addWidget(SubtitleLabel("Reglas automáticas de prioridad"))
 
         toggle_row = QHBoxLayout()
+        toggle_row.addStretch(1)
         toggle_row.addWidget(BodyLabel("Activar lógica automática de prioridades"))
         self.switch_enabled = SwitchButton()
         self.switch_enabled.setChecked(config.auto_rules_enabled)
         toggle_row.addWidget(self.switch_enabled)
-        toggle_row.addStretch(1)
+        # toggle_row.addStretch(1) hace que este en el medio 
         layout.addLayout(toggle_row)
 
         self.table = TableWidget(self)
