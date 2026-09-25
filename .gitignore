@@ -1,0 +1,31 @@
+# Archivos de caché y bytecode de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Archivos de empaquetado y compilación (PyInstaller / CX_Freeze)
+build/
+dist/
+*.manifest
+*.spec
+
+# IDEs y editores de código
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs y bases de datos locales (si aplica)
+*.log
+*.sqlite3
