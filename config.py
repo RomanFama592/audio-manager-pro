@@ -38,7 +38,30 @@ class PriorityRule:
     priority: int = 100
 
     def matches(self, device_name: str) -> bool:
-        return self.match_text.lower() in device_name.lower()
+            text = self.match_text.lower().strip()
+            name = device_name.lower()
+
+            if not text:
+                return False
+
+            # Si empieza con '!', todo lo que sigue son condiciones de negación
+            if text.startswith("!"):
+                negations = [p.strip() for p in text.split("!") if p.strip()]
+                return not any(neg in name for neg in negations)
+
+            # Si contiene '!', la primera parte es la condición positiva
+            # y las siguientes partes son las negaciones
+            parts = [p.strip() for p in text.split("!") if p.strip()]
+            pos_term = parts[0]
+            neg_terms = parts[1:]
+
+            # Separar pos_term en palabras y verificar que TODAS estén en name
+            pos_words = pos_term.split()
+            if not all(word in name for word in pos_words):
+                return False
+
+            # No debe contener ninguna de las negaciones
+            return not any(neg in name for neg in neg_terms)
 
 
 @dataclass
