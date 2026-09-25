@@ -101,7 +101,7 @@ class DevicesPage(QWidget):
         self.btn_refresh.clicked.connect(self.worker.refresh_now)
         self.btn_set_default_out.clicked.connect(lambda: self._apply_output(comm=False))
         self.btn_set_comm_out.clicked.connect(lambda: self._apply_output(comm=True))
-        self.btn_set_both_out.clicked.connect(lambda: (self._apply_output(comm=True),self._apply_output(comm=False)))
+        self.btn_set_both_out.clicked.connect(lambda: self._apply_output(comm=False, also_communications=True))
         self.btn_set_default_in.clicked.connect(lambda: self._apply_input(comm=False))
         self.btn_set_comm_in.clicked.connect(lambda: self._apply_input(comm=True))
         self.btn_set_both_in.clicked.connect(lambda: (self._apply_input(comm=True),self._apply_input(comm=False)))
@@ -129,7 +129,7 @@ class DevicesPage(QWidget):
         item = lst.currentItem()
         return item.data(Qt.UserRole) if item else None
 
-    def _apply_output(self, comm: bool) -> None:
+    def _apply_output(self, comm: bool, also_communications: bool = False) -> None:
         dev_id = self._selected_id(self.output_list)
         if not dev_id:
             InfoBar.warning("Sin selección", "Elegí primero un dispositivo de salida.",
@@ -140,12 +140,13 @@ class DevicesPage(QWidget):
             if comm:
                 set_default_communications_output(dev_id)
             else:
-                set_default_output(dev_id, also_communications=True)
+                set_default_output(dev_id, also_communications=also_communications)
             InfoBar.success("Listo", "Dispositivo de salida actualizado.",
                              position=InfoBarPosition.TOP, parent=self)
         except Exception as exc:
             InfoBar.error("Error", f"No se pudo cambiar el dispositivo: {exc}",
                            position=InfoBarPosition.TOP, parent=self)
+        self.worker.refresh_now()
 
     def _apply_input(self, comm: bool) -> None:
         dev_id = self._selected_id(self.input_list)
@@ -165,6 +166,7 @@ class DevicesPage(QWidget):
         except Exception as exc:
             InfoBar.error("Error", f"No se pudo cambiar el micrófono: {exc}",
                            position=InfoBarPosition.TOP, parent=self)
+        self.worker.refresh_now()
 
 
 # =========================================================================
