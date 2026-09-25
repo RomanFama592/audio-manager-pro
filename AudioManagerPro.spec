@@ -51,6 +51,6 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,          # sin consola: es una app de bandeja/GUI
-    # icon="resources/app_icon.ico",
+    icon="resources/app_icon.ico",
     onefile=True,
 )
