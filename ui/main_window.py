@@ -17,12 +17,12 @@ from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QListWidgetItem,
+    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QListWidgetItem,
 )
 
 from qfluentwidgets import (
-    FluentWindow, NavigationItemPosition, FluentIcon as FIF,
-    PushButton, PrimaryPushButton, ListWidget, SwitchButton, InfoBar,
+    CheckBox, FluentWindow, NavigationItemPosition, FluentIcon as FIF,
+    PushButton, PrimaryPushButton, ListWidget, SpinBox, SwitchButton, InfoBar,
     InfoBarPosition, TableWidget, LineEdit, ComboBox, CardWidget,
     SubtitleLabel, BodyLabel, ToolButton, setTheme, Theme,
 )
@@ -193,7 +193,18 @@ class RulesPage(QWidget):
         self.table = TableWidget(self)
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Texto a coincidir", "Rol", "Prioridad", "Activa"])
-        self.table.horizontalHeader().setStretchLastSection(True)
+        #self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # La celda de texto ocupa el espacio restante
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Rol
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Prioridad
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Activa
+
+        # Anchos predeterminados suficientes para ver los controles sin cortes
+        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(2, 110)
+        self.table.setColumnWidth(3, 80)
+        
         layout.addWidget(self.table)
 
         form_row = QHBoxLayout()
@@ -214,20 +225,53 @@ class RulesPage(QWidget):
         self.btn_add.clicked.connect(self._on_add_rule)
         self.btn_remove.clicked.connect(self._on_remove_rule)
         
-        # Conexión del evento de edición en celdas
+        # Conexión para la edición del texto plano en la columna 0
         self.table.itemChanged.connect(self._on_item_changed)
 
         self._reload_table()
 
     def _reload_table(self) -> None:
-        # Bloquea señales para que itemChanged no se dispare al poblar la tabla
         self.table.blockSignals(True)
         self.table.setRowCount(len(self.config.rules))
+
         for row, rule in enumerate(self.config.rules):
+            # Columna 0: Texto a coincidir (Celda editable estándar)
             self.table.setItem(row, 0, self._cell(rule.match_text))
-            self.table.setItem(row, 1, self._cell(rule.role))
-            self.table.setItem(row, 2, self._cell(str(rule.priority)))
-            self.table.setItem(row, 3, self._cell("Sí" if rule.enabled else "No"))
+
+            # Columna 1: Rol (Desplegable / ComboBox)
+            combo_role = ComboBox()
+            combo_role.addItems(["both", "console", "communications"])
+            combo_role.setCurrentText(rule.role)
+            combo_role.currentTextChanged.connect(
+                lambda text, r=rule: self._on_role_changed(r, text)
+            )
+            self.table.setCellWidget(row, 1, combo_role)
+
+            # Columna 2: Prioridad (SpinBox con saltos de a 10)
+            spin_priority = SpinBox()
+            spin_priority.setRange(0, 9999)
+            spin_priority.setSingleStep(10)
+            spin_priority.setValue(rule.priority)
+            spin_priority.valueChanged.connect(
+                lambda val, r=rule: self._on_priority_changed(r, val)
+            )
+            self.table.setCellWidget(row, 2, spin_priority)
+
+            # Columna 3: Activa (Checkbox)
+            check_enabled = CheckBox()
+            check_enabled.setChecked(rule.enabled)
+            check_enabled.checkStateChanged.connect(
+                lambda checked, r=rule: self._on_enabled_changed(r, checked)
+            )
+            # Layout contenedor para centrar la casilla de verificación en la celda
+            check_container = QWidget()
+            check_layout = QHBoxLayout(check_container)
+            check_layout.addWidget(check_enabled)
+            check_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            check_layout.setContentsMargins(0, 0, 0, 0)
+            
+            self.table.setCellWidget(row, 3, check_container)
+
         self.table.blockSignals(False)
 
     @staticmethod
@@ -236,39 +280,24 @@ class RulesPage(QWidget):
         return QTableWidgetItem(text)
 
     def _on_item_changed(self, item) -> None:
-        row = item.row()
-        col = item.column()
-        if row < 0 or row >= len(self.config.rules):
+        # Actualiza solo si cambia el texto en la columna 0
+        if item.column() != 0:
             return
+        row = item.row()
+        if 0 <= row < len(self.config.rules):
+            self.config.rules[row].match_text = item.text().strip()
+            save_config(self.config)
 
-        rule = self.config.rules[row]
-        text = item.text().strip()
+    def _on_role_changed(self, rule: PriorityRule, role: str) -> None:
+        rule.role = role
+        save_config(self.config)
 
-        if col == 0:
-            rule.match_text = text
-        elif col == 1:
-            if text in ("both", "console", "communications"):
-                rule.role = text
-            else:
-                self.table.blockSignals(True)
-                item.setText(rule.role)  # Revierte si el texto ingresado no es un rol válido
-                self.table.blockSignals(False)
-                return
-        elif col == 2:
-            if text.isdigit():
-                rule.priority = int(text)
-            else:
-                self.table.blockSignals(True)
-                item.setText(str(rule.priority))  # Revierte si no es un entero
-                self.table.blockSignals(False)
-                return
-        elif col == 3:
-            is_enabled = text.lower() in ("sí", "si", "true", "1", "yes")
-            rule.enabled = is_enabled
-            self.table.blockSignals(True)
-            item.setText("Sí" if is_enabled else "No")
-            self.table.blockSignals(False)
+    def _on_priority_changed(self, rule: PriorityRule, priority: int) -> None:
+        rule.priority = priority
+        save_config(self.config)
 
+    def _on_enabled_changed(self, rule: PriorityRule, enabled: Qt.CheckState) -> None:
+        rule.enabled = enabled == Qt.CheckState.Checked
         save_config(self.config)
 
     def _on_toggle(self, checked: bool) -> None:
