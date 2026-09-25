@@ -10,6 +10,9 @@ Ventana principal con estética Fluent Design (Windows 11) usando
 La ventana NO hace llamadas COM/audio directamente: todo pasa por
 `AudioBackendWorker` (ui/signals_bridge.py), que vive en su propio QThread.
 """
+
+#TODO: que los botones de setear dispositivos en vez de ser botones sea, click izq para establecer ambos, click derecho y menu contextual para elegir que establecer
+
 from __future__ import annotations
 
 import logging
@@ -17,11 +20,11 @@ from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
-    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QListWidgetItem,
+    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QListWidgetItem,
 )
 
 from qfluentwidgets import (
-    CheckBox, FluentWindow, NavigationItemPosition, FluentIcon as FIF,
+    CheckBox, FluentWindow, FluentIcon as FIF,
     PushButton, PrimaryPushButton, ListWidget, SpinBox, SwitchButton, InfoBar,
     InfoBarPosition, TableWidget, LineEdit, ComboBox, CardWidget,
     SubtitleLabel, BodyLabel, ToolButton, setTheme, Theme,
@@ -60,9 +63,9 @@ class DevicesPage(QWidget):
         self.output_list = ListWidget(out_card)
         out_layout.addWidget(self.output_list)
         out_btns = QHBoxLayout()
-        self.btn_set_default_out = PrimaryPushButton(FIF.ACCEPT, "Predeterminado")
+        self.btn_set_default_out = PrimaryPushButton(FIF.SPEAKERS, "Predeterminado")
         self.btn_set_comm_out = PushButton(FIF.PHONE, "Comunicaciones")
-        self.btn_set_both_out = ToolButton(FIF.PIN)
+        self.btn_set_both_out = ToolButton(FIF.ASTERISK)
         self.btn_set_both_out.setFixedSize(32, 32)
         self.btn_set_both_out.setToolTip("Establecer en Predeterminado y en Comunicaciones a la vez")
         out_btns.addWidget(self.btn_set_default_out)
@@ -78,9 +81,9 @@ class DevicesPage(QWidget):
         self.input_list = ListWidget(in_card)
         in_layout.addWidget(self.input_list)
         in_btns = QHBoxLayout()
-        self.btn_set_default_in = PrimaryPushButton(FIF.ACCEPT, "Predeterminado")
+        self.btn_set_default_in = PrimaryPushButton(FIF.SPEAKERS, "Predeterminado")
         self.btn_set_comm_in = PushButton(FIF.PHONE, "Comunicaciones")
-        self.btn_set_both_in = ToolButton(FIF.PIN)
+        self.btn_set_both_in = ToolButton(FIF.ASTERISK)
         self.btn_set_both_in.setFixedSize(32, 32)
         self.btn_set_both_in.setToolTip("Establecer en Predeterminado y en Comunicaciones a la vez")
         in_btns.addWidget(self.btn_set_default_in)
@@ -195,23 +198,37 @@ class RulesPage(QWidget):
         self.table = TableWidget(self)
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Texto a coincidir", "Rol", "Prioridad", "Activa"])
-        #self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setStyleSheet(self.table.styleSheet() + """
+            QTableView::item {
+                padding: 8px;
+            }
+        """)
+
+        # Anchos predeterminados suficientes para ver los controles sin cortes
+        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(2, 170)
+        self.table.setColumnWidth(3, 80)
+
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # La celda de texto ocupa el espacio restante
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Rol
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Prioridad
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Activa
-
-        # Anchos predeterminados suficientes para ver los controles sin cortes
-        self.table.setColumnWidth(1, 170)
-        self.table.setColumnWidth(2, 110)
-        self.table.setColumnWidth(3, 80)
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(2, Qt.SortOrder.DescendingOrder)
         
         layout.addWidget(self.table)
 
         form_row = QHBoxLayout()
+        
+        # --- Campo con Placeholder y Tooltip mejorado ---
         self.input_match = LineEdit()
-        self.input_match.setPlaceholderText("Ej: Auriculares Bluetooth")
+        self.input_match.setPlaceholderText("Ej: Altavoces ! Steam ! Virtual")
+        self.input_match.setToolTip(
+            "Ingresa el nombre del dispositivo.\n"
+            "Usa '!' para excluir palabras no deseadas.\n"
+            "Ejemplo: 'Altavoces ! Steam' (coincide con Altavoces pero NO de Steam)."
+        )
         self.combo_role = ComboBox()
         self.combo_role.addItems(["both", "console", "communications"])
         self.btn_add = PrimaryPushButton(FIF.ADD, "Agregar regla")
@@ -236,6 +253,8 @@ class RulesPage(QWidget):
         self.table.blockSignals(True)
         self.table.setRowCount(len(self.config.rules))
 
+        self.config.rules.sort(key=lambda x: x.priority)
+
         for row, rule in enumerate(self.config.rules):
             # Columna 0: Texto a coincidir (Celda editable estándar)
             self.table.setItem(row, 0, self._cell(rule.match_text))
@@ -247,17 +266,19 @@ class RulesPage(QWidget):
             combo_role.currentTextChanged.connect(
                 lambda text, r=rule: self._on_role_changed(r, text)
             )
-            self.table.setCellWidget(row, 1, combo_role)
+            combo_role.setFixedHeight(28)
+            self.table.setCellWidget(row, 1, self.create_padded_widget(combo_role, margin_h=8))
 
             # Columna 2: Prioridad (SpinBox con saltos de a 10)
             spin_priority = SpinBox()
             spin_priority.setRange(0, 9999)
             spin_priority.setSingleStep(10)
+            spin_priority.setFixedHeight(28)
             spin_priority.setValue(rule.priority)
             spin_priority.valueChanged.connect(
                 lambda val, r=rule: self._on_priority_changed(r, val)
             )
-            self.table.setCellWidget(row, 2, spin_priority)
+            self.table.setCellWidget(row, 2, self.create_padded_widget(spin_priority, margin_h=8))
 
             # Columna 3: Activa (Checkbox)
             check_enabled = CheckBox()
@@ -275,6 +296,16 @@ class RulesPage(QWidget):
             self.table.setCellWidget(row, 3, check_container)
 
         self.table.blockSignals(False)
+
+    def create_padded_widget(self, widget, margin_v=4, margin_h=6):
+        """Envuelve un widget en un contenedor con padding/márgenes."""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        # Márgenes: (izquierda, arriba, derecha, abajo)
+        layout.setContentsMargins(margin_h, margin_v, margin_h, margin_v)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(widget)
+        return container
 
     @staticmethod
     def _cell(text: str):
@@ -296,7 +327,9 @@ class RulesPage(QWidget):
 
     def _on_priority_changed(self, rule: PriorityRule, priority: int) -> None:
         rule.priority = priority
+        # self.config.rules.sort(key=lambda x: x.priority)
         save_config(self.config)
+        self._reload_table()
 
     def _on_enabled_changed(self, rule: PriorityRule, enabled: Qt.CheckState) -> None:
         rule.enabled = enabled == Qt.CheckState.Checked
@@ -310,8 +343,16 @@ class RulesPage(QWidget):
         text = self.input_match.text().strip()
         if not text:
             return
-        rule = PriorityRule(match_text=text, role=self.combo_role.currentText(),
-                             enabled=True, priority=len(self.config.rules) * 10)
+        
+        maxPriority = max((rule.priority for rule in self.config.rules), default=0)
+        
+        rule = PriorityRule(
+            match_text=text,
+            role=self.combo_role.currentText(),
+            enabled=True,
+            priority= maxPriority + 10
+        )
+        
         self.config.rules.append(rule)
         save_config(self.config)
         self.input_match.clear()
@@ -387,6 +428,8 @@ class MirrorPage(QWidget):
             self.targets_list.addItem(item)
 
     def _start_mirror(self) -> None:
+        # FIXME: cuando lo toco otra vez despues de haber selecionado un dispositivo y sin modificarlo, se congela la aplicacion
+        # FIXME: cuando tengo selecionado el mismo dispositivo de fuente como de adicional se rompe el sonido, evitar que se pueda
         src_idx = self.source_combo.currentData()
         if src_idx is None:
             InfoBar.warning("Falta fuente", "Elegí un dispositivo fuente.", parent=self)
