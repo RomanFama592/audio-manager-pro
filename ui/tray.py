@@ -17,10 +17,11 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 
 from config import save_config
 from core.device_manager import AudioDeviceInfo, Direction, set_default_output
+from ui.main_window import MainWindow
 
 
 class TrayIcon(QSystemTrayIcon):
-    def __init__(self, main_window, icon: QIcon, app: QApplication):
+    def __init__(self, main_window: MainWindow, icon: QIcon, app: QApplication):
         super().__init__(icon, main_window)
         self.main_window = main_window
         self.app = app
@@ -48,6 +49,8 @@ class TrayIcon(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
         main_window.worker.devices_changed.connect(self._on_devices_changed)
+        main_window.rules_page.switch_enabled.checkedChanged.connect(self._on_toggle_rules_in_window)
+
 
     # ---------------------------------------------------------------
     def _on_activated(self, reason) -> None:
@@ -67,6 +70,9 @@ class TrayIcon(QSystemTrayIcon):
         save_config(self.main_window.config)
         # Mantiene sincronizado el switch de la página de Reglas si está abierta
         self.main_window.rules_page.switch_enabled.setChecked(checked)
+
+    def _on_toggle_rules_in_window(self, checked: bool):
+        self.action_toggle_rules.setChecked(checked)
 
     def _on_devices_changed(self, devices: List[AudioDeviceInfo]) -> None:
         self._devices = devices
