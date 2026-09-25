@@ -24,7 +24,7 @@ from qfluentwidgets import (
     FluentWindow, NavigationItemPosition, FluentIcon as FIF,
     PushButton, PrimaryPushButton, ListWidget, SwitchButton, InfoBar,
     InfoBarPosition, TableWidget, LineEdit, ComboBox, CardWidget,
-    SubtitleLabel, BodyLabel, setTheme, Theme,
+    SubtitleLabel, BodyLabel, ToolButton, setTheme, Theme,
 )
 
 from config import AppConfig, PriorityRule, save_config
@@ -62,8 +62,12 @@ class DevicesPage(QWidget):
         out_btns = QHBoxLayout()
         self.btn_set_default_out = PrimaryPushButton(FIF.ACCEPT, "Predeterminado")
         self.btn_set_comm_out = PushButton(FIF.PHONE, "Comunicaciones")
+        self.btn_set_both_out = ToolButton(FIF.PIN)
+        self.btn_set_both_out.setFixedSize(32, 32)
+        self.btn_set_both_out.setToolTip("Establecer en Predeterminado y en Comunicaciones a la vez")
         out_btns.addWidget(self.btn_set_default_out)
         out_btns.addWidget(self.btn_set_comm_out)
+        out_btns.addWidget(self.btn_set_both_out)
         out_layout.addLayout(out_btns)
         columns.addWidget(out_card)
 
@@ -76,8 +80,12 @@ class DevicesPage(QWidget):
         in_btns = QHBoxLayout()
         self.btn_set_default_in = PrimaryPushButton(FIF.ACCEPT, "Predeterminado")
         self.btn_set_comm_in = PushButton(FIF.PHONE, "Comunicaciones")
+        self.btn_set_both_in = ToolButton(FIF.PIN)
+        self.btn_set_both_in.setFixedSize(32, 32)
+        self.btn_set_both_in.setToolTip("Establecer en Predeterminado y en Comunicaciones a la vez")
         in_btns.addWidget(self.btn_set_default_in)
         in_btns.addWidget(self.btn_set_comm_in)
+        in_btns.addWidget(self.btn_set_both_in)
         in_layout.addLayout(in_btns)
         columns.addWidget(in_card)
 
@@ -93,8 +101,10 @@ class DevicesPage(QWidget):
         self.btn_refresh.clicked.connect(self.worker.refresh_now)
         self.btn_set_default_out.clicked.connect(lambda: self._apply_output(comm=False))
         self.btn_set_comm_out.clicked.connect(lambda: self._apply_output(comm=True))
+        self.btn_set_both_out.clicked.connect(lambda: (self._apply_output(comm=True),self._apply_output(comm=False)))
         self.btn_set_default_in.clicked.connect(lambda: self._apply_input(comm=False))
         self.btn_set_comm_in.clicked.connect(lambda: self._apply_input(comm=True))
+        self.btn_set_both_in.clicked.connect(lambda: (self._apply_input(comm=True),self._apply_input(comm=False)))
 
     # ---------------------------------------------------------------
     @Slot(list)
@@ -203,21 +213,63 @@ class RulesPage(QWidget):
         self.switch_enabled.checkedChanged.connect(self._on_toggle)
         self.btn_add.clicked.connect(self._on_add_rule)
         self.btn_remove.clicked.connect(self._on_remove_rule)
+        
+        # Conexión del evento de edición en celdas
+        self.table.itemChanged.connect(self._on_item_changed)
 
         self._reload_table()
 
     def _reload_table(self) -> None:
+        # Bloquea señales para que itemChanged no se dispare al poblar la tabla
+        self.table.blockSignals(True)
         self.table.setRowCount(len(self.config.rules))
         for row, rule in enumerate(self.config.rules):
             self.table.setItem(row, 0, self._cell(rule.match_text))
             self.table.setItem(row, 1, self._cell(rule.role))
             self.table.setItem(row, 2, self._cell(str(rule.priority)))
             self.table.setItem(row, 3, self._cell("Sí" if rule.enabled else "No"))
+        self.table.blockSignals(False)
 
     @staticmethod
     def _cell(text: str):
         from PySide6.QtWidgets import QTableWidgetItem
         return QTableWidgetItem(text)
+
+    def _on_item_changed(self, item) -> None:
+        row = item.row()
+        col = item.column()
+        if row < 0 or row >= len(self.config.rules):
+            return
+
+        rule = self.config.rules[row]
+        text = item.text().strip()
+
+        if col == 0:
+            rule.match_text = text
+        elif col == 1:
+            if text in ("both", "console", "communications"):
+                rule.role = text
+            else:
+                self.table.blockSignals(True)
+                item.setText(rule.role)  # Revierte si el texto ingresado no es un rol válido
+                self.table.blockSignals(False)
+                return
+        elif col == 2:
+            if text.isdigit():
+                rule.priority = int(text)
+            else:
+                self.table.blockSignals(True)
+                item.setText(str(rule.priority))  # Revierte si no es un entero
+                self.table.blockSignals(False)
+                return
+        elif col == 3:
+            is_enabled = text.lower() in ("sí", "si", "true", "1", "yes")
+            rule.enabled = is_enabled
+            self.table.blockSignals(True)
+            item.setText("Sí" if is_enabled else "No")
+            self.table.blockSignals(False)
+
+        save_config(self.config)
 
     def _on_toggle(self, checked: bool) -> None:
         self.config.auto_rules_enabled = checked
