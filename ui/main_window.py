@@ -448,6 +448,7 @@ class MirrorPage(QWidget):
 
         engine = self._get_engine()
         try:
+            self._stop_mirror()
             engine.start(src_idx, target_indices, names)
             InfoBar.success("Mirroring activo", f"Duplicando hacia {len(target_indices)} destino(s).", parent=self)
         except Exception as exc:
