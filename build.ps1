@@ -41,8 +41,17 @@ function Invoke-Step([string]$Name, [scriptblock]$Block) {
     if ($LASTEXITCODE -ne 0) { throw "Falló: $Name (código $LASTEXITCODE)" }
 }
 
-$meta = & $python -c "import version as v; print(v.__version__); print(v.APP_NAME); print(v.PUBLISHER)"
-$version, $appName, $publisher = $meta | ForEach-Object { $_.Trim() }
+# Se lee version.py como UTF-8 en vez de pedírselo a Python: la salida de un
+# .exe pasa por la página de códigos de la consola y rompería las tildes
+# (p. ej. en el autor) en consolas no UTF-8 o en GitHub Actions.
+$versionPy = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'version.py') -Raw -Encoding UTF8
+function Get-VersionField([string]$Name) {
+    if ($versionPy -match "(?m)^$Name\s*=\s*[""']([^""']*)[""']") { return $Matches[1] }
+    throw "No se encontró $Name en version.py"
+}
+$version = Get-VersionField '__version__'
+$appName = Get-VersionField 'APP_NAME'
+$publisher = Get-VersionField 'PUBLISHER'
 Write-Host "$appName $version" -ForegroundColor Green
 
 if (-not $SkipTests) {
