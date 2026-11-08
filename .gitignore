@@ -28,3 +28,9 @@ Thumbs.db
 # Logs y bases de datos locales (si aplica)
 *.log
 *.sqlite3
+
+# Herramientas locales
+.claude/
+
+# Prompt original con el que se generó la primera versión (no se publica)
+prompt.md

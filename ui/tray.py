@@ -11,14 +11,16 @@ Icono de bandeja del sistema con menú contextual:
 #TODO: añadir el selector de dispositivos de entrada
 from __future__ import annotations
 
+import logging
 from typing import List
 
 from PySide6.QtGui import QIcon, QAction
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 
-from config import save_config
 from core.device_manager import AudioDeviceInfo, Direction, set_default_output
 from ui.main_window import MainWindow
+
+logger = logging.getLogger("audio_manager.tray")
 
 
 class TrayIcon(QSystemTrayIcon):
@@ -43,8 +45,18 @@ class TrayIcon(QSystemTrayIcon):
         self.quick_devices_menu = self.menu.addMenu("Forzar dispositivo predeterminado")
 
         self.menu.addSeparator()
+        settings = main_window.settings_page
+        self.action_autostart = self.menu.addAction("Iniciar con Windows")
+        self.action_autostart.setCheckable(True)
+        self.action_autostart.setChecked(settings.autostart_enabled())
+        self.action_autostart.triggered.connect(settings.set_autostart)
+        settings.autostart_changed.connect(self.action_autostart.setChecked)
+        # Al abrir el menú se relee el registro (pudo cambiarse desde Windows).
+        self.menu.aboutToShow.connect(settings.refresh_autostart)
+
+        self.menu.addSeparator()
         self.action_quit = self.menu.addAction("Salir")
-        self.action_quit.triggered.connect(self._quit)
+        self.action_quit.triggered.connect(self.quit_app)
 
         self.setContextMenu(self.menu)
         self.activated.connect(self._on_activated)
@@ -62,15 +74,17 @@ class TrayIcon(QSystemTrayIcon):
         if self.main_window.isVisible():
             self.main_window.hide()
         else:
-            self.main_window.show()
-            self.main_window.raise_()
-            self.main_window.activateWindow()
+            self.show_window()
+
+    def show_window(self) -> None:
+        self.main_window.showNormal()
+        self.main_window.raise_()
+        self.main_window.activateWindow()
 
     def _toggle_rules(self, checked: bool) -> None:
-        self.main_window.config.auto_rules_enabled = checked
-        save_config(self.main_window.config)
-        # Mantiene sincronizado el switch de la página de Reglas si está abierta
-        self.main_window.rules_page.switch_enabled.setChecked(checked)
+        # La página de Reglas es la dueña del estado: actualiza el switch,
+        # guarda la config y avisa al backend para re-evaluar.
+        self.main_window.rules_page.set_auto_rules_enabled(checked)
 
     def _on_toggle_rules_in_window(self, checked: bool):
         self.action_toggle_rules.setChecked(checked)
@@ -92,9 +106,12 @@ class TrayIcon(QSystemTrayIcon):
             self.showMessage("Audio Manager Pro", "Dispositivo predeterminado actualizado.",
                               QSystemTrayIcon.MessageIcon.Information, 2000)
         except Exception as exc:
+            logger.exception("No se pudo forzar el dispositivo predeterminado")
             self.showMessage("Audio Manager Pro", f"Error: {exc}",
                               QSystemTrayIcon.MessageIcon.Warning, 3000)
+        self.main_window.worker.refresh_requested.emit()
 
-    def _quit(self) -> None:
+    def quit_app(self) -> None:
         self.main_window.shutdown()
+        self.hide()  # evita que quede un icono "fantasma" en la bandeja
         self.app.quit()

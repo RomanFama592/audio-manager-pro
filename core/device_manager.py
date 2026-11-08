@@ -246,7 +246,10 @@ def list_devices(include_disabled: bool = False) -> List[AudioDeviceInfo]:
             continue
 
         for dev in devices:
+            # pycaw expone `state` como enum `AudioDeviceState` (no como int);
+            # se normaliza a su valor numérico para poder etiquetarlo.
             state_value = getattr(dev, "state", _STATE_ACTIVE)
+            state_value = getattr(state_value, "value", state_value)
             default_label = "Active" if state_filter is not None else "Unknown"
             state_name = _STATE_LABELS.get(state_value, default_label)
 
@@ -269,46 +272,68 @@ def list_devices(include_disabled: bool = False) -> List[AudioDeviceInfo]:
 #    COM) en vez de reimplementar IMMNotificationClient a mano.
 # =========================================================================
 
+class DeviceEvent:
+    """Tipos de evento que se reenvían a `on_change`."""
+    STATE = "state"        # conectado/desconectado/deshabilitado
+    ADDED = "added"
+    REMOVED = "removed"
+    DEFAULT = "default"    # cambió el predeterminado de algún rol
+
+
 class _NotificationClient(MMNotificationClient):
     """Sink COM que Windows invoca ante cambios de estado/conexión de
-    endpoints o cambio de dispositivo predeterminado."""
+    endpoints o cambio de dispositivo predeterminado.
 
-    def __init__(self, on_change: Callable[[], None]):
+    Se sobreescriben directamente los métodos de la interfaz COM
+    (`OnDeviceStateChanged`, ...), cuyas firmas define Windows y no cambian,
+    en lugar de los wrappers en minúscula de pycaw: pycaw cambió la firma de
+    esos wrappers (p. ej. `on_default_device_changed` pasó a recibir 5
+    argumentos) y eso hacía que cada evento lanzara TypeError dentro del
+    callback COM, por lo que la app nunca se enteraba de los cambios.
+
+    IMPORTANTE: estos métodos corren en un hilo del pool RPC de Windows.
+    Microsoft indica no hacer trabajo pesado ni llamar al enumerador desde
+    aquí (riesgo de deadlock), así que solo se notifica y el trabajo real
+    se hace en el hilo del backend.
+    """
+
+    def __init__(self, on_change: Callable[[str], None]):
         super().__init__()
         self._on_change = on_change
 
-    def on_device_state_changed(self, device_id, new_state):
-        logger.info("Cambio de estado: %s -> %s", device_id, new_state)
-        self._safe_notify()
+    def OnDeviceStateChanged(self, device_id, new_state):
+        logger.info("Cambio de estado: %s -> %s", device_id, _STATE_LABELS.get(new_state, new_state))
+        self._safe_notify(DeviceEvent.STATE)
 
-    def on_device_added(self, added_device_id):
-        logger.info("Dispositivo agregado: %s", added_device_id)
-        self._safe_notify()
+    def OnDeviceAdded(self, device_id):
+        logger.info("Dispositivo agregado: %s", device_id)
+        self._safe_notify(DeviceEvent.ADDED)
 
-    def on_device_removed(self, removed_device_id):
-        logger.info("Dispositivo removido: %s", removed_device_id)
-        self._safe_notify()
+    def OnDeviceRemoved(self, device_id):
+        logger.info("Dispositivo removido: %s", device_id)
+        self._safe_notify(DeviceEvent.REMOVED)
 
-    def on_default_device_changed(self, flow, role, default_device_id):
-        logger.info("Default cambiado: flow=%s role=%s id=%s", flow, role, default_device_id)
-        self._safe_notify()
+    def OnDefaultDeviceChanged(self, flow, role, default_device_id):
+        logger.debug("Default cambiado: flow=%s role=%s id=%s", flow, role, default_device_id)
+        self._safe_notify(DeviceEvent.DEFAULT)
 
-    def on_property_value_changed(self, device_id, key, *args):
+    def OnPropertyValueChanged(self, device_id, key):
         pass  # ruido de bajo interés (nombres/iconos); se ignora a propósito
 
-    def _safe_notify(self):
+    def _safe_notify(self, kind: str):
         try:
-            self._on_change()
+            self._on_change(kind)
         except Exception:
             logger.exception("Error en callback de notificación de audio")
 
 
 class DeviceWatcher:
     """Ejecuta un hilo dedicado con su propio apartamento COM (MTA) que
-    escucha eventos de hot-plug / cambio de default y dispara `on_change`
-    (pensado para reenviarse como señal Qt desde la capa de UI)."""
+    escucha eventos de hot-plug / cambio de default y dispara
+    `on_change(kind)` (pensado para reenviarse como señal Qt desde la capa
+    de UI). `on_change` se invoca desde hilos de COM: debe ser liviano."""
 
-    def __init__(self, on_change: Callable[[], None]):
+    def __init__(self, on_change: Callable[[str], None]):
         self._on_change = on_change
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -326,6 +351,8 @@ class DeviceWatcher:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning("DeviceWatcher: el hilo no terminó a tiempo")
 
     def _run(self) -> None:
         comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
@@ -346,5 +373,10 @@ class DeviceWatcher:
                 if self._enumerator and self._client:
                     self._enumerator.UnregisterEndpointNotificationCallback(self._client)
             except Exception:
-                pass
+                logger.debug("DeviceWatcher: error al desregistrar el callback", exc_info=True)
+            # Liberar los punteros COM ANTES de CoUninitialize: si quedaran
+            # vivos, su Release() ocurriría más tarde (al recolectar el
+            # objeto) sobre un apartamento ya cerrado -> crash al salir.
+            self._client = None
+            self._enumerator = None
             comtypes.CoUninitialize()
