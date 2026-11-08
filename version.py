@@ -9,5 +9,5 @@ Al publicar una versión nueva solo hay que cambiar `__version__`.
 """
 APP_NAME = "Audio Manager Pro"
 APP_EXE = "AudioManagerPro"
-PUBLISHER = "Fama Roman"
+PUBLISHER = "Famá Román"
 __version__ = "1.1.0"

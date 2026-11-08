@@ -24,7 +24,7 @@
   #define MyAppName "Audio Manager Pro"
 #endif
 #ifndef MyAppPublisher
-  #define MyAppPublisher "Fama Roman"
+  #define MyAppPublisher "Famá Román"
 #endif
 #define MyAppExeName "AudioManagerPro.exe"
 #define MyAppDistDir "..\dist\AudioManagerPro"
