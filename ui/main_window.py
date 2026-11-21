@@ -133,8 +133,9 @@ class DevicesPage(QWidget):
         in_layout.addLayout(in_btns)
         columns.addWidget(in_card)
 
-        layout.addLayout(columns)
-        layout.addStretch(1)
+        # Las listas ocupan todo el alto disponible (antes un addStretch se
+        # quedaba con el espacio extra y las listas no crecían con la ventana).
+        layout.addLayout(columns, 1)
 
         out, inp = Direction.OUTPUT, Direction.INPUT
         self.btn_refresh.clicked.connect(lambda: self.worker.refresh_requested.emit())
@@ -247,10 +248,10 @@ class RulesPage(QWidget):
         """)
 
         # Anchos predeterminados suficientes para ver los controles sin cortes
-        self.table.setColumnWidth(1, 150)
-        self.table.setColumnWidth(2, 170)
-        self.table.setColumnWidth(3, 170)
-        self.table.setColumnWidth(4, 80)
+        self.table.setColumnWidth(1, 140)
+        self.table.setColumnWidth(2, 175)
+        self.table.setColumnWidth(3, 145)
+        self.table.setColumnWidth(4, 70)
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # La celda de texto ocupa el espacio restante
@@ -262,10 +263,18 @@ class RulesPage(QWidget):
         # Las reglas se muestran de menor a mayor prioridad numérica
         header.setSortIndicator(3, Qt.SortOrder.AscendingOrder)
 
-        layout.addWidget(self.table)
-        layout.addWidget(CaptionLabel("Menor número = mayor prioridad. Las reglas de parlantes y las de "
-                                      "micrófono se evalúan por separado. Para quitar una regla, "
-                                      "seleccioná su fila haciendo clic en el texto."))
+        layout.addWidget(self.table, 1)  # la tabla crece con la ventana
+        hint = CaptionLabel("Menor número = mayor prioridad. Las reglas de parlantes y las de "
+                            "micrófono se evalúan por separado. Para quitar una regla, "
+                            "seleccioná su fila haciendo clic en el texto.")
+        hint.setWordWrap(True)  # en ventanas angostas no fuerza un ancho mínimo enorme
+        # "Quitar" actúa sobre la tabla: va junto a la ayuda, no en el formulario
+        # de alta (así el formulario entra completo en ventanas angostas).
+        self.btn_remove = PushButton(FIF.DELETE, "Quitar seleccionada")
+        hint_row = QHBoxLayout()
+        hint_row.addWidget(hint, 1)
+        hint_row.addWidget(self.btn_remove)
+        layout.addLayout(hint_row)
 
         form_row = QHBoxLayout()
 
@@ -283,14 +292,16 @@ class RulesPage(QWidget):
         self.combo_role = ComboBox()
         _fill_role_combo(self.combo_role)
         self.btn_add = PrimaryPushButton(FIF.ADD, "Agregar regla")
-        self.btn_remove = PushButton(FIF.DELETE, "Quitar seleccionada")
-        form_row.addWidget(self.input_match, 2)
-        form_row.addWidget(self.combo_type, 1)
-        form_row.addWidget(self.combo_role, 1)
+        # Solo el campo de texto se estira; los desplegables mantienen un ancho
+        # razonable en vez de repartirse el ancho de pantallas grandes.
+        for combo in (self.combo_type, self.combo_role):
+            combo.setMinimumWidth(150)
+        self.input_match.setMinimumWidth(160)
+        form_row.addWidget(self.input_match, 1)
+        form_row.addWidget(self.combo_type)
+        form_row.addWidget(self.combo_role)
         form_row.addWidget(self.btn_add)
-        form_row.addWidget(self.btn_remove)
         layout.addLayout(form_row)
-        layout.addStretch(1)
 
         # Al cambiar una prioridad no se reordena la tabla en cada paso del
         # SpinBox (eso destruía el widget mientras se editaba y hacía
@@ -558,7 +569,7 @@ class MirrorPage(QWidget):
         layout.addWidget(BodyLabel("Destinos adicionales:"))
         self.targets_list = ListWidget(self)
         self.targets_list.setSelectionMode(ListWidget.SelectionMode.MultiSelection)
-        layout.addWidget(self.targets_list)
+        layout.addWidget(self.targets_list, 1)  # la lista crece con la ventana
 
         btn_row = QHBoxLayout()
         self.btn_reload_devices = PushButton(FIF.SYNC, "Recargar dispositivos WASAPI")
@@ -571,7 +582,6 @@ class MirrorPage(QWidget):
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_stop)
         layout.addLayout(btn_row)
-        layout.addStretch(1)
 
         self.btn_reload_devices.clicked.connect(lambda: self.worker.mirror_devices_requested.emit())
         self.btn_start.clicked.connect(self._start_mirror)
@@ -730,7 +740,7 @@ class MainWindow(FluentWindow):
         self.config = config
         self._shut_down = False
         self.setWindowTitle(APP_NAME)
-        self.resize(980, 640)
+        self._fit_to_screen()
         setTheme(_THEMES.get(config.theme, Theme.AUTO))  # "auto" sigue el modo del sistema
 
         self.backend_thread, self.worker = make_backend_thread(config)
@@ -759,6 +769,25 @@ class MainWindow(FluentWindow):
         self.rules_page.rules_changed.connect(lambda: self.worker.rules_changed.emit())
 
         self.backend_thread.start()
+
+    def _fit_to_screen(self) -> None:
+        """Tamaño inicial según la pantalla (antes era fijo 980x640): en
+        monitores chicos no se sale de la pantalla y en grandes aprovecha
+        más espacio. Queda centrada en el área disponible."""
+        min_w, min_h = 900, 560  # por debajo, la tabla de reglas y su formulario se pisan
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.setMinimumSize(min_w, min_h)
+            self.resize(1040, 680)
+            return
+        area = screen.availableGeometry()
+        # En pantallas más chicas que el mínimo, el mínimo es la pantalla.
+        min_w, min_h = min(min_w, area.width()), min(min_h, area.height())
+        self.setMinimumSize(min_w, min_h)
+        width = max(min_w, min(int(area.width() * 0.6), 1280))
+        height = max(min_h, min(int(area.height() * 0.7), 820))
+        self.resize(width, height)
+        self.move(area.x() + (area.width() - width) // 2, area.y() + (area.height() - height) // 2)
 
     @Slot(str)
     def _on_rule_applied(self, message: str) -> None:

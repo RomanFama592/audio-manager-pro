@@ -4,12 +4,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-21
 
 ### Added
 - **Microphone rules**: each automatic rule now has a type — speakers/headphones
   (output) or microphone (input). Output and microphone rules are evaluated
   independently, per role. Existing rules keep working as output rules.
+
+### Fixed
+- The window content did not adapt when resizing: the rules table and the
+  device/mirroring lists stayed small (with a scrollbar) while the extra space
+  was left empty, and the rule form drop-downs stretched across wide screens.
+- The initial window size is now based on the screen (it was a fixed
+  980×640) and the window opens centered, with a minimum size.
 
 ## [1.1.0] - 2026-11-08
 
@@ -60,4 +67,5 @@ and the project uses [Semantic Versioning](https://semver.org/).
   communications), priority rules with negation syntax, WASAPI loopback
   mirroring, system tray menu.
 
+[1.2.0]: https://github.com/RomanFama592/audio-manager-pro/releases/tag/v1.2.0
 [1.1.0]: https://github.com/RomanFama592/audio-manager-pro/releases/tag/v1.1.0
