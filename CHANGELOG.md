@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Microphone rules**: each automatic rule now has a type — speakers/headphones
+  (output) or microphone (input). Output and microphone rules are evaluated
+  independently, per role. Existing rules keep working as output rules.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added

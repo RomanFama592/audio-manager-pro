@@ -72,6 +72,14 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.rules[1].priority, 100)
         self.assertEqual(cfg.theme, "auto")
 
+    def test_device_type_defaults_and_validation(self):
+        cfg = AppConfig.from_dict({"rules": [
+            {"match_text": "Viejo"},                              # config anterior: salida
+            {"match_text": "Mic", "device_type": "input"},
+            {"match_text": "Raro", "device_type": "parlante"},    # inválido -> salida
+        ]})
+        self.assertEqual([r.device_type for r in cfg.rules], ["output", "input", "output"])
+
     def test_from_dict_rejects_non_object(self):
         with self.assertRaises(ValueError):
             AppConfig.from_dict([1, 2, 3])
@@ -160,9 +168,35 @@ class RulesEngineTests(unittest.TestCase):
         self.assertIsNone(engine.evaluate_and_apply([dev("hp", "Auriculares")]))
         self.assertEqual(self.applied, [])
 
-    def test_inputs_are_ignored(self):
-        engine = self.make([PriorityRule("Micrófono")])
+    def test_output_rule_ignores_microphones(self):
+        engine = self.make([PriorityRule("Micrófono")])  # device_type por defecto: salida
         self.assertIsNone(engine.evaluate_and_apply([dev("mic", "Micrófono", direction=Direction.INPUT)]))
+
+    def test_microphone_rule(self):
+        engine = self.make([PriorityRule("Headset", device_type="input", priority=10),
+                            PriorityRule("Realtek", device_type="input", priority=20)])
+        devices = [
+            dev("mic1", "Microphone (Realtek)", direction=Direction.INPUT, console=True, comm=True),
+            dev("mic2", "Headset Microphone", direction=Direction.INPUT),
+            dev("spk", "Headset Speakers"),  # salida: no debe elegirse aunque coincida
+        ]
+        msg = engine.evaluate_and_apply(devices)
+        self.assertEqual(sorted(self.applied), [("comm", "mic2"), ("console", "mic2", False)])
+        self.assertIn("micrófono", msg)
+        # Al desconectar el headset, vuelve al micrófono Realtek
+        self.applied.clear()
+        engine.evaluate_and_apply([dev("mic1", "Microphone (Realtek)", direction=Direction.INPUT),
+                                   dev("mic2", "Headset Microphone", direction=Direction.INPUT, state="NotPresent")])
+        self.assertEqual(sorted(self.applied), [("comm", "mic1"), ("console", "mic1", False)])
+
+    def test_output_and_microphone_rules_are_independent(self):
+        # La regla de parlantes con prioridad 1 no impide que se aplique la de micrófono.
+        engine = self.make([PriorityRule("Headset", device_type="output", priority=1),
+                            PriorityRule("Headset", device_type="input", priority=50)])
+        engine.evaluate_and_apply([dev("spk", "Headset Speakers"),
+                                   dev("mic", "Headset Microphone", direction=Direction.INPUT)])
+        applied_ids = {entry[1] for entry in self.applied}
+        self.assertEqual(applied_ids, {"spk", "mic"})
 
     def test_failed_apply_is_retried(self):
         engine = self.make([PriorityRule("Auriculares", role="console")])

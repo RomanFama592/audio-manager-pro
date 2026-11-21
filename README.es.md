@@ -25,7 +25,8 @@ Fluent Design nativa.
   clic (desde la ventana o la bandeja).
 - **Reglas automáticas de prioridad**: por ejemplo, *"si se conectan mis
   auriculares Bluetooth, que pasen a ser el predeterminado; si se desconectan,
-  volver a los altavoces"*. Reaccionan al instante al conectar/desconectar.
+  volver a los altavoces"*. Funcionan para parlantes/auriculares y para
+  micrófonos, y reaccionan al instante al conectar/desconectar.
 - **Mirroring de audio**: reproduce lo que suena en una salida en varias
   salidas a la vez (WASAPI loopback), con baja latencia.
 - **Mirroring de micrófono**: envía un micrófono a una o más salidas
@@ -78,9 +79,13 @@ usan la mayoría de las apps; el de *comunicaciones*, Discord, Teams, Zoom, etc.
 
 ### Reglas automáticas
 
-Cada regla tiene un texto, un rol y una prioridad. Cada vez que cambian los
-dispositivos, el dispositivo activo con **menor número de prioridad** que
+Cada regla tiene un texto, un **tipo** (**Parlantes**, es decir salidas, o
+**Micrófono**), un rol y una prioridad. Cada vez que cambian los dispositivos,
+el dispositivo activo de ese tipo con **menor número de prioridad** que
 coincide con una regla pasa a ser el predeterminado para el rol de esa regla.
+Las reglas de parlantes y las de micrófono se evalúan por separado: podés
+tener a la vez, por ejemplo, *"Headset → salida predeterminada"* y *"Headset
+Microphone → micrófono de comunicaciones"*.
 
 | Texto | Coincide con dispositivos cuyo nombre… |
 |---|---|
@@ -242,8 +247,6 @@ flowchart LR
 
 ## Limitaciones conocidas
 
-- Las reglas solo se aplican a dispositivos de salida (todavía no hay reglas
-  para micrófonos).
 - `IPolicyConfig` no está documentada; una build futura de Windows podría cambiarla.
 - La interfaz solo está en español.
 - El instalador y el ejecutable no están firmados digitalmente.

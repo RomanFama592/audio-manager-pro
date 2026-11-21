@@ -36,7 +36,7 @@ from qfluentwidgets import (
     NavigationItemPosition,
 )
 
-from config import AppConfig, PriorityRule, save_config
+from config import DEVICE_INPUT, DEVICE_OUTPUT, AppConfig, PriorityRule, save_config
 from core.device_manager import AudioDeviceInfo, Direction, Role, set_default_device
 from ui.settings_page import SettingsPage
 from ui.signals_bridge import MIRROR_MIC, MIRROR_SYSTEM, make_backend_thread
@@ -51,11 +51,25 @@ ROLE_CHOICES = (
 )
 
 
-def _fill_role_combo(combo: ComboBox, current: str = "both") -> None:
-    for value, label in ROLE_CHOICES:
+DEVICE_TYPE_CHOICES = (
+    (DEVICE_OUTPUT, "Parlantes"),
+    (DEVICE_INPUT, "Micrófono"),
+)
+
+
+def _fill_combo(combo: ComboBox, choices, current: str) -> None:
+    for value, label in choices:
         combo.addItem(label, userData=value)
     idx = combo.findData(current)
     combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+
+def _fill_role_combo(combo: ComboBox, current: str = "both") -> None:
+    _fill_combo(combo, ROLE_CHOICES, current)
+
+
+def _fill_type_combo(combo: ComboBox, current: str = DEVICE_OUTPUT) -> None:
+    _fill_combo(combo, DEVICE_TYPE_CHOICES, current)
 
 
 # =========================================================================
@@ -222,8 +236,8 @@ class RulesPage(QWidget):
         layout.addLayout(toggle_row)
 
         self.table = TableWidget(self)
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Texto a coincidir", "Rol", "Prioridad", "Activa"])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["Texto a coincidir", "Tipo", "Rol", "Prioridad", "Activa"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setStyleSheet(self.table.styleSheet() + """
@@ -233,21 +247,24 @@ class RulesPage(QWidget):
         """)
 
         # Anchos predeterminados suficientes para ver los controles sin cortes
-        self.table.setColumnWidth(1, 170)
+        self.table.setColumnWidth(1, 150)
         self.table.setColumnWidth(2, 170)
-        self.table.setColumnWidth(3, 80)
+        self.table.setColumnWidth(3, 170)
+        self.table.setColumnWidth(4, 80)
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # La celda de texto ocupa el espacio restante
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Rol
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Prioridad
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Activa
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Tipo
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Rol
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Prioridad
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Activa
         header.setSortIndicatorShown(True)
         # Las reglas se muestran de menor a mayor prioridad numérica
-        header.setSortIndicator(2, Qt.SortOrder.AscendingOrder)
+        header.setSortIndicator(3, Qt.SortOrder.AscendingOrder)
 
         layout.addWidget(self.table)
-        layout.addWidget(CaptionLabel("Menor número = mayor prioridad. Para quitar una regla, "
+        layout.addWidget(CaptionLabel("Menor número = mayor prioridad. Las reglas de parlantes y las de "
+                                      "micrófono se evalúan por separado. Para quitar una regla, "
                                       "seleccioná su fila haciendo clic en el texto."))
 
         form_row = QHBoxLayout()
@@ -260,11 +277,15 @@ class RulesPage(QWidget):
             "Usa '!' para excluir palabras no deseadas.\n"
             "Ejemplo: 'Altavoces ! Steam' (coincide con Altavoces pero NO de Steam)."
         )
+        self.combo_type = ComboBox()
+        _fill_type_combo(self.combo_type)
+        self.combo_type.setToolTip("Parlantes/auriculares (salida) o micrófono (entrada)")
         self.combo_role = ComboBox()
         _fill_role_combo(self.combo_role)
         self.btn_add = PrimaryPushButton(FIF.ADD, "Agregar regla")
         self.btn_remove = PushButton(FIF.DELETE, "Quitar seleccionada")
         form_row.addWidget(self.input_match, 2)
+        form_row.addWidget(self.combo_type, 1)
         form_row.addWidget(self.combo_role, 1)
         form_row.addWidget(self.btn_add)
         form_row.addWidget(self.btn_remove)
@@ -304,16 +325,25 @@ class RulesPage(QWidget):
                 # Columna 0: Texto a coincidir (Celda editable estándar)
                 self.table.setItem(row, 0, QTableWidgetItem(rule.match_text))
 
-                # Columna 1: Rol (Desplegable / ComboBox)
+                # Columna 1: Tipo (parlantes / micrófono)
+                combo_type = ComboBox()
+                _fill_type_combo(combo_type, rule.device_type)
+                combo_type.currentIndexChanged.connect(
+                    lambda idx, r=rule, c=combo_type: self._on_type_changed(r, c.itemData(idx))
+                )
+                combo_type.setFixedHeight(28)
+                self.table.setCellWidget(row, 1, self.create_padded_widget(combo_type, margin_h=8))
+
+                # Columna 2: Rol (Desplegable / ComboBox)
                 combo_role = ComboBox()
                 _fill_role_combo(combo_role, rule.role)
                 combo_role.currentIndexChanged.connect(
                     lambda idx, r=rule, c=combo_role: self._on_role_changed(r, c.itemData(idx))
                 )
                 combo_role.setFixedHeight(28)
-                self.table.setCellWidget(row, 1, self.create_padded_widget(combo_role, margin_h=8))
+                self.table.setCellWidget(row, 2, self.create_padded_widget(combo_role, margin_h=8))
 
-                # Columna 2: Prioridad (SpinBox con saltos de a 10)
+                # Columna 3: Prioridad (SpinBox con saltos de a 10)
                 spin_priority = SpinBox()
                 spin_priority.setRange(0, 9999)
                 spin_priority.setSingleStep(10)
@@ -323,9 +353,9 @@ class RulesPage(QWidget):
                     lambda val, r=rule: self._on_priority_changed(r, val)
                 )
                 spin_priority.editingFinished.connect(self._resort_if_needed)
-                self.table.setCellWidget(row, 2, self.create_padded_widget(spin_priority, margin_h=8))
+                self.table.setCellWidget(row, 3, self.create_padded_widget(spin_priority, margin_h=8))
 
-                # Columna 3: Activa (Checkbox)
+                # Columna 4: Activa (Checkbox)
                 check_enabled = CheckBox()
                 check_enabled.setChecked(rule.enabled)
                 check_enabled.checkStateChanged.connect(
@@ -338,7 +368,7 @@ class RulesPage(QWidget):
                 check_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 check_layout.setContentsMargins(0, 0, 0, 0)
 
-                self.table.setCellWidget(row, 3, check_container)
+                self.table.setCellWidget(row, 4, check_container)
         finally:
             self.table.blockSignals(False)
             self._reloading = False
@@ -370,6 +400,13 @@ class RulesPage(QWidget):
             self.table.blockSignals(False)
             return
         rule.match_text = text
+        save_config(self.config)
+        self.rules_changed.emit()
+
+    def _on_type_changed(self, rule: PriorityRule, device_type: Optional[str]) -> None:
+        if not device_type or device_type == rule.device_type:
+            return
+        rule.device_type = device_type
         save_config(self.config)
         self.rules_changed.emit()
 
@@ -430,6 +467,7 @@ class RulesPage(QWidget):
             role=self.combo_role.currentData() or "both",
             enabled=True,
             priority=min(max_priority + 10, 9999),
+            device_type=self.combo_type.currentData() or DEVICE_OUTPUT,
         )
 
         self.config.rules.append(rule)

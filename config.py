@@ -17,6 +17,10 @@ from typing import List, Dict, Any
 APP_NAME = "AudioManagerPro"
 
 VALID_ROLES = ("both", "console", "communications")
+# Tipo de dispositivo al que apunta una regla: parlantes/auriculares o micrófono.
+DEVICE_OUTPUT = "output"
+DEVICE_INPUT = "input"
+VALID_DEVICE_TYPES = (DEVICE_OUTPUT, DEVICE_INPUT)
 
 logger = logging.getLogger("audio_manager.config")
 
@@ -37,6 +41,8 @@ class PriorityRule:
     """Regla: si un dispositivo cuyo nombre contiene `match_text` se conecta,
     se convierte automáticamente en predeterminado (según `role`).
     `priority` más bajo = mayor prioridad (se evalúa primero).
+    `device_type` indica si la regla elige la salida (parlantes/auriculares)
+    o la entrada (micrófono); cada tipo se decide por separado.
 
     Formato de `match_text`:
       * "Auriculares Sony"     -> el nombre debe contener TODAS las palabras
@@ -49,6 +55,7 @@ class PriorityRule:
     role: str = "both"          # "console" | "communications" | "both"
     enabled: bool = True
     priority: int = 100
+    device_type: str = DEVICE_OUTPUT  # "output" | "input"
 
     def matches(self, device_name: str) -> bool:
         text = self.match_text.lower().strip()
@@ -125,11 +132,14 @@ def _rule_from_dict(raw: Any) -> "PriorityRule | None":
         priority = int(raw.get("priority", 100))
     except (TypeError, ValueError):
         priority = 100
+    # Configs anteriores no tienen device_type: eran todas reglas de salida.
+    device_type = raw.get("device_type", DEVICE_OUTPUT)
     return PriorityRule(
         match_text=text,
         role=role if role in VALID_ROLES else "both",
         enabled=bool(raw.get("enabled", True)),
         priority=priority,
+        device_type=device_type if device_type in VALID_DEVICE_TYPES else DEVICE_OUTPUT,
     )
 
 

@@ -26,7 +26,8 @@ and a system-tray menu — with a native Fluent Design interface.
   independently, for outputs and microphones, in one click (window or tray).
 - **Automatic priority rules** — e.g. *"when my Bluetooth headphones connect,
   make them the default; when they disconnect, go back to the speakers"*.
-  Rules react instantly to plug/unplug events.
+  Works for speakers/headphones and for microphones, and reacts instantly to
+  plug/unplug events.
 - **Audio mirroring** — play whatever sounds on one output on several other
   outputs at the same time (WASAPI loopback), with low latency.
 - **Microphone mirroring** — route a microphone to one or more outputs
@@ -78,9 +79,13 @@ Select a device and press **Predeterminado** (default), **Comunicaciones**
 
 ### Automatic rules
 
-Each rule has a match text, a role and a priority. Whenever devices change,
-the active device with the **lowest priority number** that matches a rule
-becomes the default for that rule's role.
+Each rule has a match text, a **type** — **Parlantes** (speakers/headphones,
+i.e. outputs) or **Micrófono** (microphones) — a role and a priority. Whenever
+devices change, the active device of that type with the **lowest priority
+number** that matches a rule becomes the default for that rule's role.
+Speaker rules and microphone rules are evaluated independently, so you can
+have, for example, *"Headset → default output"* and *"Headset Microphone →
+communications microphone"* at the same time.
 
 | Match text | Matches devices whose name… |
 |---|---|
@@ -238,7 +243,6 @@ flowchart LR
 
 ## Known limitations
 
-- Rules only apply to output devices (microphone rules are not implemented yet).
 - `IPolicyConfig` is undocumented; a future Windows build could change it.
 - The interface is only available in Spanish.
 - The installer and executable are not code-signed.
